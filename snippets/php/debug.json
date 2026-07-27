@@ -1,0 +1,12 @@
+{
+  "Var Dump": {
+    "prefix": "vd",
+    "body": "var_dump(${1:variable}); die();",
+    "description": "Affiche le contenu d'une variable et stoppe l'exécution"
+  },
+  "Print R": {
+    "prefix": "pr",
+    "body": "echo '<pre>' . print_r(${1:variable}, true) . '</pre>';",
+    "description": "Affiche une variable de manière lisible"
+  }
+}

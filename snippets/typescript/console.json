@@ -1,0 +1,17 @@
+{
+  "Console Log": {
+    "prefix": "cl",
+    "body": "console.log(${1:value});",
+    "description": "Affiche une valeur dans la console"
+  },
+  "Console Error": {
+    "prefix": "ce",
+    "body": "console.error(${1:message});",
+    "description": "Affiche une erreur dans la console"
+  },
+  "Console Warn": {
+    "prefix": "cw",
+    "body": "console.warn(${1:message});",
+    "description": "Affiche un avertissement dans la console"
+  }
+}
