@@ -1,0 +1,62 @@
+{
+    "$schema": "https://schemas.wp.org/trunk/theme.json",
+    "version": 3,
+    "slug": "{{styleName}}",
+    "title": "{{styleName}}",
+    "blockTypes": [
+        "core/group",
+        "core/columns",
+        "core/column",
+        "core/cover"
+    ],
+    "styles": {
+        "color": {
+            "background": "{{backgroundColor}}",
+            "text": "{{textColor}}"
+        },
+        "blocks": {
+            "core/button":{
+                "color": {
+                    "background": "{{BoutonBackgroundColor}}",
+                    "text": "{{BoutonTextColor}}"
+                },
+                "border": {
+                    "color": "{{BoutonBorderColor}}",
+                    "width": "1px",
+                    "radius": "{{BoutonBorderRadius}}"
+                }
+            }
+        },
+        "elements": {
+            "button": {
+                ":hover":{
+                    "color": {
+                        "background": "{{BoutonHoverBackgroundColor}} !important",
+                        "text": "{{BoutonHoverTextColor}} !important"
+                    },
+                    "border": {
+                        "color": "{{BoutonHoverBorderColor}} !important"
+                    }
+                }
+            },
+            "heading": {
+                "color": {
+                    "text": "{{headingColor}}"
+                }
+            },
+            "link":{
+                "color": {
+                    "text": "{{linkColor}}"
+                },
+                ":hover":{
+                    "color": {
+                        "text": "{{linkHoverColor}}"
+                    }
+                },
+                "typography": {
+                    "textDecoration": "none"
+                  }
+            }
+        }
+    }
+}

@@ -5,6 +5,6 @@
 	"slug": "style-menu",
 	"blockTypes": ["core/list"],
     "styles": {
-        "css": "list-style:none; display: flex; align-items:flex-start;width:fit-content; flex-direction:row; gap:.5rem; justify-content:center;  & a{text-decoration: none !important; line-height:1.5;  color:inherit; text-align:right}"
+     "css": "padding-left:0;list-style:none; display: flex; align-items:flex-start;width:fit-content; flex-direction:row; gap:.5rem; justify-content:center;  & a{text-decoration: none !important; line-height:1.5;  color:inherit; text-align:right}"
     }
 }
