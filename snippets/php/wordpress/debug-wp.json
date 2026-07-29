@@ -1,0 +1,71 @@
+{
+  "WP Debug Config": {
+    "prefix": "wpdebug-config",
+    "scope": "php,hack",
+    "body": [
+      "define( 'WP_DEBUG', ${1|true,false|} );",
+      "define( 'WP_DEBUG_DISPLAY', ${2|false,true|} );",
+      "define( 'WP_DEBUG_LOG', ${3|true,false|} );",
+      "define( 'SCRIPT_DEBUG', ${4|false,true|} );",
+      "define( 'SAVEQUERIES', ${5|false,true|} );"
+    ],
+    "description": "Active le mode debug WordPress avec log dans wp-content/debug.log sans affichage à l'écran"
+  },
+
+  "WP Debug If Block": {
+    "prefix": "wpdebugif",
+    "scope": "php,hack",
+    "body": [
+      "if ( defined( 'WP_DEBUG' ) && WP_DEBUG ) {",
+      "\t${1:// Code exécuté uniquement en mode debug}",
+      "\t$0",
+      "}"
+    ],
+    "description": "Bloc conditionnel exécuté uniquement si WP_DEBUG est actif"
+  },
+
+  "WP Debug Log": {
+    "prefix": "wplog",
+    "scope": "php,hack",
+    "body": [
+      "if ( defined( 'WP_DEBUG' ) && WP_DEBUG ) {",
+      "\terror_log( '${1:Label} : ' . print_r( ${2:$variable}, true ) );",
+      "}"
+    ],
+    "description": "Log une variable dans debug.log uniquement si WP_DEBUG est actif"
+  },
+
+  "WP Debug Log Simple": {
+    "prefix": "wplogs",
+    "scope": "php,hack",
+    "body": [
+      "error_log( '${1:Message}' );"
+    ],
+    "description": "Log un simple message texte dans debug.log"
+  },
+
+  "WP Debug Var Dump": {
+    "prefix": "wpvardump",
+    "scope": "php,hack",
+    "body": [
+      "if ( defined( 'WP_DEBUG' ) && WP_DEBUG ) {",
+      "\techo '<pre>';",
+      "\tvar_dump( ${1:$variable} );",
+      "\techo '</pre>';",
+      "}"
+    ],
+    "description": "Affiche le contenu d'une variable avec var_dump uniquement en mode debug"
+  },
+
+  "WP Debug Environment Check": {
+    "prefix": "wpdebugenv",
+    "scope": "php,hack",
+    "body": [
+      "if ( wp_get_environment_type() === '${1|development,staging,production|}' ) {",
+      "\t${2:// Code spécifique à l'environnement}",
+      "\t$0",
+      "}"
+    ],
+    "description": "Vérifie l'environnement WordPress avant d'exécuter du code (dev/staging/production)"
+  }
+}
