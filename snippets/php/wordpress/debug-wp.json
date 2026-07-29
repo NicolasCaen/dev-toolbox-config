@@ -1,5 +1,5 @@
 {
-  "WP Debug Config": {
+  "WP Debug Config Paramétrable": {
     "prefix": "wpdebug-config",
     "scope": "php,hack",
     "body": [
