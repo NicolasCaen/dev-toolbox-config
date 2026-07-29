@@ -1,0 +1,13 @@
+{
+  "WP Enqueue Script": {
+    "prefix": "wpenqueue",
+    "body": [
+      "function custom_enqueue_${1:nom_fonction}() {",
+      "\twp_register_script( '${1:nom_fonction}', get_template_directory_uri() . '/js/${2:nom_fichier}.js', array( 'jquery' ), null, true );",
+      "\twp_enqueue_script( '${1:nom_fonction}' );",
+      "}",
+      "add_action( 'wp_enqueue_scripts', 'custom_enqueue_${1:nom_fonction}' );"
+    ],
+    "description": "Crée une fonction d'enqueue/register script WordPress"
+  }
+}

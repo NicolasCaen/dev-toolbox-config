@@ -1,0 +1,9 @@
+{
+  "WP Require Once Function File": {
+    "prefix": "wpinclude",
+    "body": [
+      "require_once get_template_directory() . '/function/${1:nomdufichier}.php';"
+    ],
+    "description": "Include un fichier depuis le dossier function/"
+  }
+}

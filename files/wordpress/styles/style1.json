@@ -1,0 +1,20 @@
+{
+  "version": 2,
+  "title": "{{styleName}}",
+  "settings": {
+    "color": {
+      "palette": [
+        {
+          "slug": "primary",
+          "color": "{{primaryColor}}",
+          "name": "Primaire"
+        },
+        {
+          "slug": "secondary",
+          "color": "{{secondaryColor}}",
+          "name": "Secondaire"
+        }
+      ]
+    }
+  }
+}
