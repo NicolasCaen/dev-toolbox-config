@@ -1,0 +1,71 @@
+{
+  "WP Shortcode with Attributes": {
+    "prefix": "wpshortcode",
+    "scope": "php,hack",
+    "body": [
+      "function ${1:my_shortcode}_callback( $atts ) {",
+      "\t$atts = shortcode_atts(",
+      "\t\tarray(",
+      "\t\t\t'${2:attribut1}' => '${3:valeur_defaut}',",
+      "\t\t\t'${4:attribut2}' => '${5:valeur_defaut}',",
+      "\t\t),",
+      "\t\t$atts,",
+      "\t\t'${6:mon-shortcode}'",
+      "\t);",
+      "",
+      "\tob_start();",
+      "\t?>",
+      "\t<div class=\"${6}\">",
+      "\t\t${7:<!-- Contenu du shortcode -->}",
+      "\t</div>",
+      "\t<?php",
+      "\treturn ob_get_clean();",
+      "}",
+      "add_shortcode( '${6}', '${1}_callback' );",
+      "$0"
+    ],
+    "description": "Crée un shortcode WordPress avec attributs et valeurs par défaut"
+  },
+
+  "WP Shortcode Simple": {
+    "prefix": "wpshortcodesimple",
+    "scope": "php,hack",
+    "body": [
+      "function ${1:my_shortcode}_callback( $atts, $content = null ) {",
+      "\treturn '${2:<p>Contenu du shortcode</p>}';",
+      "}",
+      "add_shortcode( '${3:mon-shortcode}', '${1}_callback' );",
+      "$0"
+    ],
+    "description": "Crée un shortcode WordPress simple sans attributs"
+  },
+
+  "WP Shortcode with Content": {
+    "prefix": "wpshortcodecontent",
+    "scope": "php,hack",
+    "body": [
+      "function ${1:my_shortcode}_callback( $atts, $content = null ) {",
+      "\t$atts = shortcode_atts(",
+      "\t\tarray(",
+      "\t\t\t'${2:attribut1}' => '${3:valeur_defaut}',",
+      "\t\t),",
+      "\t\t$atts,",
+      "\t\t'${4:mon-shortcode}'",
+      "\t);",
+      "",
+      "\t$content = do_shortcode( $content );",
+      "",
+      "\tob_start();",
+      "\t?>",
+      "\t<div class=\"${4}\">",
+      "\t\t<?php echo wp_kses_post( $content ); ?>",
+      "\t</div>",
+      "\t<?php",
+      "\treturn ob_get_clean();",
+      "}",
+      "add_shortcode( '${4}', '${1}_callback' );",
+      "$0"
+    ],
+    "description": "Crée un shortcode WordPress avec attributs et contenu englobé [shortcode]contenu[/shortcode]"
+  }
+}
