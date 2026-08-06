@@ -1,133 +1,193 @@
 #!/usr/bin/env python3
 """
-Génère automatiquement un tableau spacingSizes JSON pour WordPress/Gutenberg.
-- Valeurs fixes : conversion px → rem
-- Valeurs fluides : clamp(min, preferred, max) avec interpolation linéaire
+Générateur spacingSizes JSON pour WordPress/Gutenberg.
+- Valeurs fixes et clamp mélangées dans une seule saisie
+- Format name : "slug | rem" (ex: "4 | .25", "16-56 | 1->3.5")
+- Peut écrire directement dans un fichier theme.json
 """
- 
+
 import json
-import sys
- 
+import os
+from itertools import groupby
+
 def px_to_rem(px):
-    """Convertit des pixels en rem (1rem = 16px)."""
     return px / 16
- 
-def format_rem(value):
-    """Formate une valeur rem de façon propre (évite 1.0rem → 1rem)."""
+
+def format_rem_short(value):
+    """Formate rem sans suffixe (ex: 0.25 → '.25', 1.0 → '1', 3.5 → '3.5')."""
     if value == int(value):
-        return f"{int(value)}rem"
-    return f"{round(value, 4)}rem".rstrip('0').rstrip('.') + "rem"
- 
+        return str(int(value))
+    s = f"{round(value, 4)}"
+    s = s.rstrip('0').rstrip('.')
+    if s.startswith('0.'):
+        return s[1:]
+    return s
+
+def format_rem(value):
+    return format_rem_short(value) + "rem"
+
+def format_vw(value):
+    """Formate une valeur vw sans suffixe rem (ex: 0.175 → '.175', 1.0 → '1')."""
+    if value == int(value):
+        return str(int(value))
+    s = f"{round(value, 6)}"
+    s = s.rstrip('0').rstrip('.')
+    if s.startswith('0.'):
+        return s[1:]
+    return s
+
 def calc_clamp(min_px, max_px, min_vp=500, max_vp=1500):
-    """
-    Calcule clamp(min, preferred, max).
-    En dessous de min_vp → valeur = min_px
-    Au dessus de max_vp → valeur = max_px
-    Entre les deux → interpolation linéaire.
-    """
+    """Calcule clamp(min, preferred, max) avec interpolation linéaire."""
     min_rem = px_to_rem(min_px)
     max_rem = px_to_rem(max_px)
- 
-    # Calcul de la droite : y = a*x + b (x en px, y en rem)
-    # À x = min_vp : y = min_rem
-    # À x = max_vp : y = max_rem
-    slope = (max_rem - min_rem) / (max_vp - min_vp)  # rem/px
-    intercept = min_rem - slope * min_vp             # rem
- 
-    # Conversion en vw (1vw = viewport/100 px)
-    slope_vw = slope * 100  # rem/vw
- 
+
+    slope = (max_rem - min_rem) / (max_vp - min_vp)
+    intercept = min_rem - slope * min_vp
+    slope_vw = slope * 100
+
     min_str = format_rem(min_rem)
     max_str = format_rem(max_rem)
- 
-    # preferred = intercept + slope_vw * 1vw
     intercept_str = format_rem(intercept)
-    slope_vw_str = format_rem(slope_vw)
- 
-    # Construire le preferred
+    slope_vw_str = format_vw(slope_vw)
+
     if intercept >= 0:
-        preferred = f"{intercept_str} + {slope_vw_str}vw"
+        preferred = f"{intercept_str}rem + {slope_vw_str}vw"
     else:
         preferred = f"-{format_rem(abs(intercept))} + {slope_vw_str}vw"
- 
+
     return f"clamp({min_str}, {preferred}, {max_str})"
- 
-def make_fixed(slug, px):
-    """Crée une entrée fixe."""
-    rem = format_rem(px_to_rem(px))
+
+def make_fixed(slug, px, prefix=""):
+    rem_short = format_rem_short(px_to_rem(px))
+    full_slug = f"{prefix}{slug}" if prefix else str(slug)
     return {
-        "slug": str(slug),
-        "name": f"{rem} ({px}px)",
-        "size": rem if px != 0 else "0"
+        "slug": full_slug,
+        "name": f"{full_slug} | {rem_short}",
+        "size": rem_short + "rem" if px != 0 else "0"
     }
- 
+
 def make_fluid(slug, min_px, max_px, min_vp=500, max_vp=1500, prefix=""):
-    """Crée une entrée fluide avec clamp."""
-    min_rem = format_rem(px_to_rem(min_px))
-    max_rem = format_rem(px_to_rem(max_px))
+    min_short = format_rem_short(px_to_rem(min_px))
+    max_short = format_rem_short(px_to_rem(max_px))
     clamp_val = calc_clamp(min_px, max_px, min_vp, max_vp)
-    name_prefix = f"{prefix} | " if prefix else ""
+    full_slug = f"{prefix}{slug}" if prefix else str(slug)
     return {
-        "slug": f"{prefix}{slug}" if prefix else str(slug),
-        "name": f"{name_prefix}{min_rem} ({min_px}px) \u2192 {max_rem} ({max_px}px)",
+        "slug": full_slug,
+        "name": f"{full_slug} | {min_short}->{max_short}",
         "size": clamp_val
     }
- 
+
 def make_special(slug, name, size):
-    """Crée une entrée spéciale (var, etc.)."""
-    return {
-        "slug": slug,
-        "name": name,
-        "size": size
-    }
- 
+    return {"slug": slug, "name": name, "size": size}
+
+def parse_entry(entry):
+    """Parse : '16' = fixe, '16-56' = clamp, 'h-16-56' = clamp h-."""
+    prefix = ""
+    if entry.startswith("h-"):
+        prefix = "h-"
+        entry = entry[2:]
+
+    if "-" in entry:
+        parts = entry.split("-")
+        if len(parts) == 2:
+            try:
+                return ("fluid", int(parts[0]), int(parts[1]), prefix)
+            except ValueError:
+                return None
+    else:
+        try:
+            return ("fixed", int(entry), None, prefix)
+        except ValueError:
+            return None
+    return None
+
+def generate_spacing_sizes(raw, min_vp, max_vp, specials):
+    """Génère la liste spacingSizes à partir de la saisie."""
+    entries = []
+    for token in raw.split(","):
+        token = token.strip()
+        if not token:
+            continue
+        parsed = parse_entry(token)
+        if parsed:
+            entries.append(parsed)
+        else:
+            print(f"  ⚠️ Ignoré : '{token}' (format invalide)")
+
+    fixed = [(px, pfx) for kind, px, _, pfx in entries if kind == "fixed"]
+    fluid = [(mn, mx, pfx) for kind, mn, mx, pfx in entries if kind == "fluid"]
+
+    normal_fixed = [(px, pfx) for px, pfx in fixed if not pfx]
+    h_fixed = [(px, pfx) for px, pfx in fixed if pfx]
+    normal_fluid = [(mn, mx, pfx) for mn, mx, pfx in fluid if not pfx]
+    h_fluid = [(mn, mx, pfx) for mn, mx, pfx in fluid if pfx]
+
+    spacing_sizes = []
+
+    for px, _ in normal_fixed:
+        spacing_sizes.append(make_fixed(px, px))
+
+    if normal_fluid:
+        normal_fluid.sort(key=lambda x: (x[0], x[1]))
+        for min_px, group in groupby(normal_fluid, key=lambda x: x[0]):
+            for mn, mx, _ in group:
+                slug = f"{mn}-{mx}"
+                spacing_sizes.append(make_fluid(slug, mn, mx, min_vp, max_vp))
+
+    for px, _ in h_fixed:
+        spacing_sizes.append(make_fixed(px, px, prefix="h-"))
+
+    if h_fluid:
+        h_fluid.sort(key=lambda x: (x[0], x[1]))
+        for min_px, group in groupby(h_fluid, key=lambda x: x[0]):
+            for mn, mx, _ in group:
+                slug = f"{mn}-{mx}"
+                spacing_sizes.append(make_fluid(slug, mn, mx, min_vp, max_vp, prefix="h-"))
+
+    for slug, name, size in specials:
+        spacing_sizes.append(make_special(slug, name, size))
+
+    return spacing_sizes
+
+def merge_into_theme_json(theme_path, spacing_sizes):
+    """Remplace spacingSizes dans un fichier theme.json."""
+    with open(theme_path, 'r', encoding='utf-8') as f:
+        theme = json.load(f)
+
+    if "settings" not in theme:
+        theme["settings"] = {}
+    if "spacing" not in theme["settings"]:
+        theme["settings"]["spacing"] = {}
+
+    theme["settings"]["spacing"]["spacingSizes"] = spacing_sizes
+
+    with open(theme_path, 'w', encoding='utf-8') as f:
+        json.dump(theme, f, indent=4, ensure_ascii=False)
+        f.write("\n")
+
+    print(f"✅ theme.json mis à jour : {theme_path}")
+
 def main():
     print("=" * 60)
     print("  Générateur spacingSizes pour WordPress/Gutenberg")
     print("=" * 60)
- 
-    # --- Valeurs fixes ---
-    print("\n--- VALEURS FIXES ---")
-    print("Entrez les valeurs en px séparées par des virgules.")
-    print("Exemple : 0,4,8,12,16,24,32,40,48,56,72,80")
-    raw = input("Valeurs fixes (px) : ").strip()
+
+    print("\n--- VALEURS ---")
+    print("Entrez les valeurs séparées par des virgules.")
+    print("  Fixe  : 0, 4, 8, 16, 32")
+    print("  Clamp : 16-56, 56-120 (min-max en px)")
+    print("  Hauteur : h-16, h-16-56 (préfixe h-)")
+    print("Exemple : 0,4,8,16,24,32,16-32,16-56,56-120,h-16,h-16-56")
+    raw = input("\nValeurs : ").strip()
     if not raw:
         raw = "0,4,8,12,16,24,32,40,48,56,72,80"
-    fixed_px = [int(x.strip()) for x in raw.split(",")]
- 
-    # --- Paramètres clamp ---
+
     print("\n--- PARAMÈTRES CLAMP ---")
     min_vp_input = input("Viewport min en px (défaut 500) : ").strip()
     max_vp_input = input("Viewport max en px (défaut 1500) : ").strip()
     min_vp = int(min_vp_input) if min_vp_input else 500
     max_vp = int(max_vp_input) if max_vp_input else 1500
- 
-    # --- Valeurs fluides ---
-    print("\n--- VALEURS FLUIDES (clamp) ---")
-    print("Format : min_px-max_px (ex: 16-32, 16-48, 40-80)")
-    print("Laisser vide pour terminer.")
-    print("Préfixe 'h-' pour les hauteurs : tapez 'h-' devant (ex: h-16-40)")
- 
-    fluid_entries = []
-    while True:
-        entry = input(f"  Valeur fluide (min-max{', ou h-min-max pour hauteur'}) : ").strip()
-        if not entry:
-            break
-        prefix = ""
-        if entry.startswith("h-"):
-            prefix = "h-"
-            entry = entry[2:]
-        parts = entry.split("-")
-        if len(parts) == 2:
-            try:
-                min_px, max_px = int(parts[0]), int(parts[1])
-                fluid_entries.append((min_px, max_px, prefix))
-            except ValueError:
-                print("  ⚠️ Format invalide. Exemple : 16-32")
-        else:
-            print("  ⚠️ Format invalide. Exemple : 16-32")
- 
-    # --- Valeurs spéciales ---
+
     print("\n--- VALEURS SPÉCIALES ---")
     print("Laisser vide pour terminer.")
     specials = []
@@ -135,66 +195,47 @@ def main():
         slug = input("  Slug (ex: headerheight) : ").strip()
         if not slug:
             break
-        name = input("  Nom (ex: Header Height) : ").strip()
+        name = input("  Nom (ex: headerheight | Header Height) : ").strip()
         size = input("  Size (ex: var(--header-height)) : ").strip()
         specials.append((slug, name, size))
- 
-    # --- Génération ---
-    print("\n" + "=" * 60)
-    print("  Génération du JSON...")
-    print("=" * 60)
- 
-    spacing_sizes = []
- 
-    # Fixes
-    for px in fixed_px:
-        spacing_sizes.append(make_fixed(px, px))
- 
-    # Fluides - groupées par min_px
-    if fluid_entries:
-        # Séparer normales et h-
-        normal_fluids = [(mn, mx, p) for mn, mx, p in fluid_entries if not p]
-        h_fluids = [(mn, mx, p) for mn, mx, p in fluid_entries if p]
- 
-        # Trier par min puis max
-        normal_fluids.sort(key=lambda x: (x[0], x[1]))
-        h_fluids.sort(key=lambda x: (x[0], x[1]))
- 
-        # Regrouper par min_px
-        from itertools import groupby
-        for min_px, group in groupby(normal_fluids, key=lambda x: x[0]):
-            for mn, mx, pfx in group:
-                slug = f"{mn}-{mx}"
-                spacing_sizes.append(make_fluid(slug, mn, mx, min_vp, max_vp))
- 
-        # H | fixes d'abord (si pas déjà dans fixed_px)
-        h_fixed_added = False
-        for mn, mx, pfx in h_fluids:
-            if not h_fixed_added and mn not in fixed_px:
-                spacing_sizes.append(make_fixed(f"h-{mn}", mn))
-            h_fixed_added = True
- 
-        # H | fluides
-        for min_px, group in groupby(h_fluids, key=lambda x: x[0]):
-            for mn, mx, pfx in group:
-                slug = f"{mn}-{mx}"
-                spacing_sizes.append(make_fluid(slug, mn, mx, min_vp, max_vp, prefix="h-"))
- 
-    # Spéciales
-    for slug, name, size in specials:
-        spacing_sizes.append(make_special(slug, name, size))
- 
-    # Output JSON
+
+    # Génération
+    spacing_sizes = generate_spacing_sizes(raw, min_vp, max_vp, specials)
+
+    # Output JSON standalone
     output = json.dumps({"spacingSizes": spacing_sizes}, indent=4, ensure_ascii=False)
- 
-    print("\n" + output)
- 
-    # Sauvegarde optionnelle
-    save = input("\nSauvegarder dans un fichier ? (nom/chemin ou Entrée pour ignorer) : ").strip()
-    if save:
-        with open(save, 'w', encoding='utf-8') as f:
-            f.write(output)
-        print(f"✅ Sauvegardé dans {save}")
- 
+    print("\n" + "=" * 60)
+    print(output)
+
+    # Sauvegarde
+    print("\n" + "=" * 60)
+    print("Sauvegarde :")
+    print("  - Chemin vers theme.json → remplace spacingSizes dans le fichier")
+    print("  - Autre nom de fichier → sauvegarde le JSON standalone")
+    print("  - Entrée → affichage uniquement")
+    save = input("\nFichier de destination : ").strip()
+
+    if not save:
+        return
+
+    if save.endswith('.json') and os.path.isfile(save):
+        # Vérifier si c'est un theme.json
+        with open(save, 'r', encoding='utf-8') as f:
+            content = f.read()
+        try:
+            data = json.loads(content)
+            if "settings" in data and "version" in data:
+                # C'est un theme.json
+                merge_into_theme_json(save, spacing_sizes)
+                return
+        except json.JSONDecodeError:
+            pass
+
+    # Sauvegarde standalone
+    with open(save, 'w', encoding='utf-8') as f:
+        f.write(output)
+        f.write("\n")
+    print(f"✅ Sauvegardé dans {save}")
+
 if __name__ == "__main__":
     main()
