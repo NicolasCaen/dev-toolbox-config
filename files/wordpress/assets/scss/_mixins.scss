@@ -1,0 +1,27 @@
+@function strip-unit($value) {
+  @if type-of($value) == 'number' and not unitless($value) {
+    @return $value / ($value * 0 + 1);
+  }
+  @return $value;
+}
+
+@function px($target) {
+  @return strip-unit($target) * 1px;
+}
+
+// mixins
+@mixin b($min, $max) {
+  @media (min-width: px($min)) and (max-width: px($max)) {
+    @content;
+  }
+}
+@mixin m($max) {
+  @media (max-width: px($max)) {
+    @content;
+  }
+}
+@mixin p($min) {
+  @media (min-width: px($min)) {
+    @content;
+  }
+}

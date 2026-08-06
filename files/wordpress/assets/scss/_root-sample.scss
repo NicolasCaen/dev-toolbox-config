@@ -1,0 +1,31 @@
+/*
+
+ *   // -- includes -- start <dossier> <variante> <options>
+ *
+ * Paramètres :
+ *   <dossier>  – dossier à scanner, relatif à ce fichier ("." = dossier courant)
+ *   <variante> – optionnel, sélectionne le format d'include :
+ *                  "import" (par défaut) → @import "nom";
+ *                  "use"                  → @use "nom";
+ *   <options>  – optionnel, "recursive" pour scanner aussi les sous-dossiers
+ *                  (par défaut, seuls les fichiers du dossier direct sont inclus)
+ *
+ * Filtre des fichiers (partials) :
+ *   - Par défaut, seuls les fichiers commençant par "_" sont inclus (partials SCSS)
+ *     Ex: _has-gap.scss sera inclus, main.scss sera ignoré
+ *   - L'underscore initial et l'extension sont retirés (_has-gap.scss → "has-gap")
+ *   - Pour inclure tous les fichiers (avec et sans _), définir un format
+ *     personnalisé dans le paramètre devToolbox.includeFormats avec
+ *     "partialsOnly": false
+ *
+ * Détails :
+ *   - Seuls les fichiers .scss du dossier direct sont inclus par défaut
+ *   - Ajouter "recursive" dans les options pour scanner aussi les sous-dossiers
+ *   - Ce fichier est automatiquement exclu de la liste
+ *   - Les lignes existantes sont conservées : seuls les nouveaux fichiers
+ *     sont ajoutés à la fin du bloc, triés alphabétiquement
+ *   - Plusieurs blocs possibles dans un même fichier
+ */
+
+// -- includes -- start . use recursive
+// -- includes -- end
