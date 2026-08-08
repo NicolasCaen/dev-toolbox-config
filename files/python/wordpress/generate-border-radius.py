@@ -1,17 +1,19 @@
 #!/usr/bin/env python3
 """
-Générateur spacingSizes JSON pour WordPress/Gutenberg.
+Générateur radiusSizes JSON pour WordPress/Gutenberg.
 - Valeurs fixes et clamp mélangées dans une seule saisie
-- Format name : "slug | rem" (ex: "4 | .25", "16-56 | 1->3.5")
-- Peut écrire directement dans un fichier theme.json
+- Slug = valeur en px (ex: "4", "4-8")
+- Valeurs spéciales : full (100%), rounded (10rem)
 """
 
 import json
 import os
 from itertools import groupby
 
+
 def px_to_rem(px):
     return px / 16
+
 
 def format_rem_short(value):
     """Formate rem sans suffixe (ex: 0.25 → '.25', 1.0 → '1', 3.5 → '3.5')."""
@@ -23,8 +25,10 @@ def format_rem_short(value):
         return s[1:]
     return s
 
+
 def format_rem(value):
     return format_rem_short(value) + "rem"
+
 
 def format_vw(value):
     """Formate une valeur vw sans suffixe rem (ex: 0.175 → '.175', 1.0 → '1')."""
@@ -35,6 +39,7 @@ def format_vw(value):
     if s.startswith('0.'):
         return s[1:]
     return s
+
 
 def calc_clamp(min_px, max_px, min_vp=500, max_vp=1500):
     """Calcule clamp(min, preferred, max) avec interpolation linéaire."""
@@ -57,52 +62,48 @@ def calc_clamp(min_px, max_px, min_vp=500, max_vp=1500):
 
     return f"clamp({min_str}, {preferred}, {max_str})"
 
-def make_fixed(slug, px, prefix=""):
+
+def make_fixed(slug, px):
     rem_short = format_rem_short(px_to_rem(px))
-    full_slug = f"{prefix}{slug}" if prefix else str(slug)
     return {
-        "slug": full_slug,
-        "name": f"{full_slug} | {rem_short}",
+        "slug": str(slug),
+        "name": str(slug),
         "size": rem_short + "rem" if px != 0 else "0"
     }
 
-def make_fluid(slug, min_px, max_px, min_vp=500, max_vp=1500, prefix=""):
-    min_short = format_rem_short(px_to_rem(min_px))
-    max_short = format_rem_short(px_to_rem(max_px))
+
+def make_fluid(slug, min_px, max_px, min_vp=500, max_vp=1500):
     clamp_val = calc_clamp(min_px, max_px, min_vp, max_vp)
-    full_slug = f"{prefix}{slug}" if prefix else str(slug)
     return {
-        "slug": full_slug,
-        "name": f"{full_slug} | {min_short}->{max_short}",
+        "slug": str(slug),
+        "name": str(slug),
         "size": clamp_val
     }
+
 
 def make_special(slug, name, size):
     return {"slug": slug, "name": name, "size": size}
 
-def parse_entry(entry):
-    """Parse : '16' = fixe, '16-56' = clamp, 'h-16-56' = clamp h-."""
-    prefix = ""
-    if entry.startswith("h-"):
-        prefix = "h-"
-        entry = entry[2:]
 
+def parse_entry(entry):
+    """Parse : '4' = fixe, '4-8' = clamp."""
     if "-" in entry:
         parts = entry.split("-")
         if len(parts) == 2:
             try:
-                return ("fluid", int(parts[0]), int(parts[1]), prefix)
+                return ("fluid", int(parts[0]), int(parts[1]))
             except ValueError:
                 return None
     else:
         try:
-            return ("fixed", int(entry), None, prefix)
+            return ("fixed", int(entry), None)
         except ValueError:
             return None
     return None
 
-def generate_spacing_sizes(raw, min_vp, max_vp, specials):
-    """Génère la liste spacingSizes à partir de la saisie."""
+
+def generate_radius_sizes(raw, min_vp, max_vp, specials):
+    """Génère la liste radiusSizes à partir de la saisie."""
     entries = []
     for token in raw.split(","):
         token = token.strip()
@@ -114,52 +115,38 @@ def generate_spacing_sizes(raw, min_vp, max_vp, specials):
         else:
             print(f"  ⚠️ Ignoré : '{token}' (format invalide)")
 
-    fixed = [(px, pfx) for kind, px, _, pfx in entries if kind == "fixed"]
-    fluid = [(mn, mx, pfx) for kind, mn, mx, pfx in entries if kind == "fluid"]
+    fixed = [px for kind, px, _ in entries if kind == "fixed"]
+    fluid = [(mn, mx) for kind, mn, mx in entries if kind == "fluid"]
 
-    normal_fixed = [(px, pfx) for px, pfx in fixed if not pfx]
-    h_fixed = [(px, pfx) for px, pfx in fixed if pfx]
-    normal_fluid = [(mn, mx, pfx) for mn, mx, pfx in fluid if not pfx]
-    h_fluid = [(mn, mx, pfx) for mn, mx, pfx in fluid if pfx]
+    radius_sizes = []
 
-    spacing_sizes = []
+    for px in fixed:
+        radius_sizes.append(make_fixed(px, px))
 
-    for px, _ in normal_fixed:
-        spacing_sizes.append(make_fixed(px, px))
-
-    if normal_fluid:
-        normal_fluid.sort(key=lambda x: (x[0], x[1]))
-        for min_px, group in groupby(normal_fluid, key=lambda x: x[0]):
-            for mn, mx, _ in group:
+    if fluid:
+        fluid.sort(key=lambda x: (x[0], x[1]))
+        for min_px, group in groupby(fluid, key=lambda x: x[0]):
+            for mn, mx in group:
                 slug = f"{mn}-{mx}"
-                spacing_sizes.append(make_fluid(slug, mn, mx, min_vp, max_vp))
-
-    for px, _ in h_fixed:
-        spacing_sizes.append(make_fixed(px, px, prefix="h-"))
-
-    if h_fluid:
-        h_fluid.sort(key=lambda x: (x[0], x[1]))
-        for min_px, group in groupby(h_fluid, key=lambda x: x[0]):
-            for mn, mx, _ in group:
-                slug = f"{mn}-{mx}"
-                spacing_sizes.append(make_fluid(slug, mn, mx, min_vp, max_vp, prefix="h-"))
+                radius_sizes.append(make_fluid(slug, mn, mx, min_vp, max_vp))
 
     for slug, name, size in specials:
-        spacing_sizes.append(make_special(slug, name, size))
+        radius_sizes.append(make_special(slug, name, size))
 
-    return spacing_sizes
+    return radius_sizes
 
-def merge_into_theme_json(theme_path, spacing_sizes):
-    """Remplace spacingSizes dans un fichier theme.json."""
+
+def merge_into_theme_json(theme_path, radius_sizes):
+    """Remplace radiusSizes dans un fichier theme.json."""
     with open(theme_path, 'r', encoding='utf-8') as f:
         theme = json.load(f)
 
     if "settings" not in theme:
         theme["settings"] = {}
-    if "spacing" not in theme["settings"]:
-        theme["settings"]["spacing"] = {}
+    if "border" not in theme["settings"]:
+        theme["settings"]["border"] = {}
 
-    theme["settings"]["spacing"]["spacingSizes"] = spacing_sizes
+    theme["settings"]["border"]["radiusSizes"] = radius_sizes
 
     with open(theme_path, 'w', encoding='utf-8') as f:
         json.dump(theme, f, indent=4, ensure_ascii=False)
@@ -167,30 +154,31 @@ def merge_into_theme_json(theme_path, spacing_sizes):
 
     print(f"✅ theme.json mis à jour : {theme_path}")
 
-def generate_css(spacing_sizes, prefix="--wp--preset--size--"):
+
+def generate_css(radius_sizes, prefix="--wp--preset--radius--"):
     """Génère un bloc :root avec des variables CSS."""
     lines = [":root {"]
-    for entry in spacing_sizes:
+    for entry in radius_sizes:
         slug = entry["slug"]
         size = entry["size"]
         lines.append(f"  {prefix}{slug}: {size};")
     lines.append("}")
     return "\n".join(lines)
 
+
 def main():
     print("=" * 60)
-    print("  Générateur spacingSizes pour WordPress/Gutenberg")
+    print("  Générateur radiusSizes pour WordPress/Gutenberg")
     print("=" * 60)
 
     print("\n--- VALEURS ---")
     print("Entrez les valeurs séparées par des virgules.")
-    print("  Fixe  : 0, 4, 8, 16, 32")
-    print("  Clamp : 16-56, 56-120 (min-max en px)")
-    print("  Hauteur : h-16, h-16-56 (préfixe h-)")
-    print("Exemple : 0,4,8,16,24,32,40,56,72,80,120,160,200,240,16-24,16-32,16-40,16-56,16-72,16-120,16-160,24-32,24-40,24-56,24-72,32-40,32-56,32-72,40-56,40-72,40,80,40-120,40-160,40-200,40-240,56-72,56-80,56-120,56-160,56-200,56-240,72-80,72-120,72-160,72-200-240")
+    print("  Fixe : 0, 4, 8, 16, 24")
+    print("  Clamp : 4-8, 8-16, 16-24 (min-max en px)")
+    print("Exemple : 0,4,8,16,24,4-8,4-16,4-24,8-16,8-24,16-24")
     raw = input("\nValeurs : ").strip()
     if not raw:
-        raw = "0,4,8,16,24,32,40,56,72,80,120,160,200,240,16-24,16-32,16-40,16-56,16-72,16-120,16-160,24-32,24-40,24-56,24-72,32-40,32-56,32-72,40-56,40-72,40,80,40-120,40-160,40-200,40-240,56-72,56-80,56-120,56-160,56-200,56-240,72-80,72-120,72-160,72-200,72-240"
+        raw = "0,4,8,16,24"
 
     print("\n--- PARAMÈTRES CLAMP ---")
     min_vp_input = input("Viewport min en px (défaut 500) : ").strip()
@@ -201,9 +189,8 @@ def main():
     print("\n--- VALEURS SPÉCIALES ---")
     specials = []
     special_presets = [
-        ("headerheight", "Header height", "var(--headerheight)"),
-        ("root-left", "Root padding left", "var(--wp--style--root--padding-left)"),
-        ("root-right", "Root padding right", "var(--wp--style--root--padding-right)")
+        ("full", "full", "100%"),
+        ("rounded", "rounded", "10rem")
     ]
     for slug, name, size in special_presets:
         response = input(f"  Ajouter '{name}' ({slug}) ? (o/n) : ").strip().lower()
@@ -211,7 +198,7 @@ def main():
             specials.append((slug, name, size))
 
     # Génération
-    spacing_sizes = generate_spacing_sizes(raw, min_vp, max_vp, specials)
+    radius_sizes = generate_radius_sizes(raw, min_vp, max_vp, specials)
 
     # Format de sortie
     print("\n--- FORMAT ---")
@@ -222,12 +209,12 @@ def main():
         format_choice = "json"
 
     if format_choice == "css":
-        prefix = input("Préfixe CSS (défaut --wp--preset--size--) : ").strip()
+        prefix = input("Préfixe CSS (défaut --wp--preset--radius--) : ").strip()
         if not prefix:
-            prefix = "--wp--preset--size--"
-        output = generate_css(spacing_sizes, prefix)
+            prefix = "--wp--preset--radius--"
+        output = generate_css(radius_sizes, prefix)
     else:
-        output = json.dumps({"spacingSizes": spacing_sizes}, indent=4, ensure_ascii=False)
+        output = json.dumps({"radiusSizes": radius_sizes}, indent=4, ensure_ascii=False)
 
     # Affichage
     print("\n" + "=" * 60)
@@ -240,7 +227,7 @@ def main():
         print("  - Chemin vers fichier .css")
         print("  - Autre nom → sauvegarde le CSS")
     else:
-        print("  - Chemin vers theme.json → remplace spacingSizes dans le fichier")
+        print("  - Chemin vers theme.json → remplace radiusSizes dans le fichier")
         print("  - Autre nom → sauvegarde le JSON standalone")
     print("  - Entrée → affichage uniquement")
     save = input("\nFichier de destination : ").strip()
@@ -263,7 +250,7 @@ def main():
             data = json.loads(content)
             if "settings" in data and "version" in data:
                 # C'est un theme.json
-                merge_into_theme_json(save, spacing_sizes)
+                merge_into_theme_json(save, radius_sizes)
                 return
         except json.JSONDecodeError:
             pass
@@ -273,6 +260,7 @@ def main():
         f.write(output)
         f.write("\n")
     print(f"✅ JSON sauvegardé dans {save}")
+
 
 if __name__ == "__main__":
     main()
