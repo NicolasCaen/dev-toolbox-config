@@ -47,13 +47,13 @@ def calc_clamp(min_px, max_px, min_vp=500, max_vp=1500):
 
     min_str = format_rem(min_rem)
     max_str = format_rem(max_rem)
-    intercept_str = format_rem(intercept)
+    intercept_str = format_rem_short(intercept)
     slope_vw_str = format_vw(slope_vw)
 
     if intercept >= 0:
         preferred = f"{intercept_str}rem + {slope_vw_str}vw"
     else:
-        preferred = f"-{format_rem(abs(intercept))} + {slope_vw_str}vw"
+        preferred = f"-{format_rem_short(abs(intercept))}rem + {slope_vw_str}vw"
 
     return f"clamp({min_str}, {preferred}, {max_str})"
 
@@ -167,6 +167,16 @@ def merge_into_theme_json(theme_path, spacing_sizes):
 
     print(f"✅ theme.json mis à jour : {theme_path}")
 
+def generate_css(spacing_sizes, prefix="--wp--preset--size--"):
+    """Génère un bloc :root avec des variables CSS."""
+    lines = [":root {"]
+    for entry in spacing_sizes:
+        slug = entry["slug"]
+        size = entry["size"]
+        lines.append(f"  {prefix}{slug}: {size};")
+    lines.append("}")
+    return "\n".join(lines)
+
 def main():
     print("=" * 60)
     print("  Générateur spacingSizes pour WordPress/Gutenberg")
@@ -202,20 +212,46 @@ def main():
     # Génération
     spacing_sizes = generate_spacing_sizes(raw, min_vp, max_vp, specials)
 
-    # Output JSON standalone
-    output = json.dumps({"spacingSizes": spacing_sizes}, indent=4, ensure_ascii=False)
+    # Format de sortie
+    print("\n--- FORMAT ---")
+    print("  json : génère un objet JSON (theme.json/size.json)")
+    print("  css  : génère des variables CSS dans :root")
+    format_choice = input("Format (json/css) [défaut json] : ").strip().lower()
+    if not format_choice:
+        format_choice = "json"
+
+    if format_choice == "css":
+        prefix = input("Préfixe CSS (défaut --wp--preset--size--) : ").strip()
+        if not prefix:
+            prefix = "--wp--preset--size--"
+        output = generate_css(spacing_sizes, prefix)
+    else:
+        output = json.dumps({"spacingSizes": spacing_sizes}, indent=4, ensure_ascii=False)
+
+    # Affichage
     print("\n" + "=" * 60)
     print(output)
 
     # Sauvegarde
     print("\n" + "=" * 60)
     print("Sauvegarde :")
-    print("  - Chemin vers theme.json → remplace spacingSizes dans le fichier")
-    print("  - Autre nom de fichier → sauvegarde le JSON standalone")
+    if format_choice == "css":
+        print("  - Chemin vers fichier .css")
+        print("  - Autre nom → sauvegarde le CSS")
+    else:
+        print("  - Chemin vers theme.json → remplace spacingSizes dans le fichier")
+        print("  - Autre nom → sauvegarde le JSON standalone")
     print("  - Entrée → affichage uniquement")
     save = input("\nFichier de destination : ").strip()
 
     if not save:
+        return
+
+    if format_choice == "css":
+        with open(save, 'w', encoding='utf-8') as f:
+            f.write(output)
+            f.write("\n")
+        print(f"✅ CSS sauvegardé dans {save}")
         return
 
     if save.endswith('.json') and os.path.isfile(save):
@@ -231,11 +267,11 @@ def main():
         except json.JSONDecodeError:
             pass
 
-    # Sauvegarde standalone
+    # Sauvegarde standalone JSON
     with open(save, 'w', encoding='utf-8') as f:
         f.write(output)
         f.write("\n")
-    print(f"✅ Sauvegardé dans {save}")
+    print(f"✅ JSON sauvegardé dans {save}")
 
 if __name__ == "__main__":
     main()
