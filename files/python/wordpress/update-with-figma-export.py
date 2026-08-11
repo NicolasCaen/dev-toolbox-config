@@ -32,9 +32,12 @@ import re
 # ---------------------------------------------------------------------------
 
 def slugify(text):
-    """Convertit un nom en slug (minuscules, / et espaces -> -, caractères spéciaux supprimés)."""
+    """Convertit un nom en slug (minuscules, accents -> ASCII, / et espaces -> -, caractères spéciaux supprimés)."""
     text = text.lower().strip()
     text = text.replace("/", " ")
+    # Translittération des caractères accentués vers leur équivalent ASCII
+    trans = str.maketrans("àâäçéèêëîïôöùûüÿñ", "aaaceeeeiioouuuyn")
+    text = text.translate(trans)
     text = re.sub(r"[^a-z0-9\s-]", "", text)
     text = re.sub(r"\s+", "-", text)
     text = re.sub(r"-+", "-", text)
@@ -230,9 +233,14 @@ def choose_figma_source(folder):
 # theme.json / CSS
 # ---------------------------------------------------------------------------
 
-def merge_into_theme_json(theme_path, palette, gradients, duotones, custom_colors=None):
+def merge_into_theme_json(theme_path, palette, gradients, duotones, custom_colors=None,
+                          global_vars=None, global_vars_force=False):
     """Remplace palette, gradients et duotone dans un fichier theme.json.
-    Si custom_colors est fourni ({slug: hex}), ajoute dans settings.custom.color."""
+    Les listes vides sont ignorées (ne supprime pas les valeurs existantes).
+    Si custom_colors est fourni ({slug: hex}), ajoute dans settings.custom.color.
+    Si global_vars est fourni, garantit la présence des variables globales dans
+    settings.custom.color : ajoute les manquantes, et si global_vars_force est
+    vrai, réécrit aussi celles qui existent déjà."""
     with open(theme_path, "r", encoding="utf-8") as f:
         theme = json.load(f)
 
@@ -241,17 +249,46 @@ def merge_into_theme_json(theme_path, palette, gradients, duotones, custom_color
     if "color" not in theme["settings"]:
         theme["settings"]["color"] = {}
 
-    theme["settings"]["color"]["palette"] = palette
-    theme["settings"]["color"]["gradients"] = gradients
-    theme["settings"]["color"]["duotone"] = duotones
+    if palette:
+        theme["settings"]["color"]["palette"] = palette
+    if gradients:
+        theme["settings"]["color"]["gradients"] = gradients
+    if duotones:
+        theme["settings"]["color"]["duotone"] = duotones
 
-    if custom_colors:
+    nb_added = nb_reset = 0
+    if custom_colors or global_vars:
         if "custom" not in theme["settings"]:
             theme["settings"]["custom"] = {}
         if "color" not in theme["settings"]["custom"]:
             theme["settings"]["custom"]["color"] = {}
-        for slug, hex_val in custom_colors.items():
-            theme["settings"]["custom"]["color"][slug] = hex_val
+        target = theme["settings"]["custom"]["color"]
+
+        # Variables globales : ajoute les manquantes, réécrit tout si force
+        if global_vars:
+            for key, value in global_vars.items():
+                if key not in target:
+                    target[key] = value
+                    nb_added += 1
+                elif global_vars_force:
+                    if target[key] != value:
+                        nb_reset += 1
+                    target[key] = value
+
+        if custom_colors:
+            # Nettoyer les anciennes clés Figma slugifiées (background-page,
+            # text-title, etc.) remplacées par les clés CUSTOM_COLOR_MAPPING
+            old_figma_slugs = {slugify(name) for name in CUSTOM_COLOR_MAPPING}
+            protected = set(global_vars or ())
+            for old_slug in list(target.keys()):
+                if (old_slug in old_figma_slugs and old_slug not in custom_colors
+                        and old_slug not in protected):
+                    del target[old_slug]
+            # Ne jamais écraser une variable globale par une valeur hex Figma
+            for slug, value in custom_colors.items():
+                if global_vars and slug in global_vars:
+                    continue
+                target[slug] = value
 
     with open(theme_path, "w", encoding="utf-8") as f:
         json.dump(theme, f, indent=4, ensure_ascii=False)
@@ -260,6 +297,11 @@ def merge_into_theme_json(theme_path, palette, gradients, duotones, custom_color
     print(f"✅ theme.json mis à jour : {theme_path}")
     if custom_colors:
         print(f"✅ custom.color : {len(custom_colors)} couleur(s)")
+    if global_vars:
+        msg = f"✅ variables globales : {nb_added} ajoutée(s)"
+        if global_vars_force:
+            msg += f", {nb_reset} réinitialisée(s)"
+        print(msg)
 
 
 def generate_css(palette, gradients, duotones,
@@ -315,17 +357,10 @@ def main():
         for fname, path, data in files:
             if is_style_file(data):
                 other_files.append((fname, path, data))
+            elif fname.lower() == "token.json":
+                token_files.append((fname, path, data))
             else:
-                # Détecter les fichiers Token (variables avec alias vers Colors)
-                has_alias = any(
-                    var.get("type") == "COLOR" and
-                    any(rv.get("alias") for rv in var.get("resolvedValuesByMode", {}).values())
-                    for var in data.get("variables", [])
-                )
-                if has_alias:
-                    token_files.append((fname, path, data))
-                else:
-                    other_files.append((fname, path, data))
+                other_files.append((fname, path, data))
 
         # --- Token -> palette ---
         if token_files:
@@ -438,11 +473,33 @@ def main():
                                 if token.isdigit() and 1 <= int(token) <= len(mode_items):
                                     selected_mode_ids.append(mode_items[int(token) - 1][0])
 
-                    cc = extract_custom_colors_from_file(data, selected_mode_ids)
+                    cc = extract_custom_colors_from_file(data, selected_mode_ids, token_slugs=token_slugs if token_slugs else None)
                     custom_colors.update(cc)
                     print(f"  ✅ {len(cc)} couleur(s) custom extraites de '{fname}'.")
     else:
         print("  ⚠️ Aucun dossier fourni, extraction Figma ignorée.")
+
+    # --- Variables globales (custom.color sémantique) -------------------
+    print("\n--- VARIABLES GLOBALES ---")
+    print("Écrire les variables globales de custom.color (text, background, title, link,")
+    print("  accent, decorative, input-*, button-*, submit-*) ?")
+    print(f"  {len(GLOBAL_COLOR_VARS)} variables, uniquement des références "
+          f"(var:preset|color|... / var:custom|color|...), jamais de hex.")
+    print("  Les variables absentes sont ajoutées ; les existantes sont conservées")
+    print("  sauf si vous choisissez de les réinitialiser.")
+    print("  0 : ne rien écrire")
+    print("  1 : ajouter uniquement les variables manquantes (recommandé)")
+    print("  2 : réinitialiser toutes les variables aux valeurs par défaut")
+    raw_globals = input("Variables globales (0/1/2) [défaut 1] : ").strip()
+    if raw_globals == "0":
+        global_vars = None
+        global_vars_force = False
+    elif raw_globals == "2":
+        global_vars = GLOBAL_COLOR_VARS
+        global_vars_force = True
+    else:
+        global_vars = GLOBAL_COLOR_VARS
+        global_vars_force = False
 
     # --- Couleurs manuelles --------------------------------------------
     print("\n--- COULEURS MANUELLES (optionnel) ---")
@@ -661,14 +718,31 @@ def main():
             content = f.read()
         try:
             data = json.loads(content)
-            if "settings" in data and "version" in data:
-                merge_into_theme_json(save, palette, gradients, duotones,
-                                      custom_colors=custom_colors if custom_colors else None)
-                merged_into_theme = True
-        except json.JSONDecodeError:
-            pass
+        except json.JSONDecodeError as e:
+            print(f"\n❌ '{save}' existe mais n'est pas un JSON valide : {e}")
+            print("   Aucune écriture effectuée (le fichier aurait été écrasé).")
+            print("   Corrigez la syntaxe JSON puis relancez le script.")
+            return
+        if "settings" in data and "version" in data:
+            merge_into_theme_json(save, palette, gradients, duotones,
+                                  custom_colors=custom_colors if custom_colors else None,
+                                  global_vars=global_vars,
+                                  global_vars_force=global_vars_force)
+            merged_into_theme = True
+        else:
+            print(f"\n❌ '{save}' est un JSON existant mais ne ressemble pas à un theme.json")
+            print("   (clés 'settings' et 'version' attendues).")
+            print("   Aucune écriture effectuée pour éviter d'écraser le fichier.")
+            return
 
     if not merged_into_theme:
+        if os.path.isfile(save):
+            confirm = input(
+                f"\n⚠️ '{save}' existe déjà et va être ÉCRASÉ. Confirmer ? (o/n) [défaut: n] : "
+            ).strip().lower()
+            if confirm not in ("o", "oui", "y", "yes"):
+                print("   Annulé, aucune écriture effectuée.")
+                return
         with open(save, "w", encoding="utf-8") as f:
             f.write(output)
             f.write("\n")
@@ -716,8 +790,7 @@ def main():
 
         generate_section_styles(
             styles_folder, theme_path_input, sections_dir,
-            token_slugs=token_slugs if token_slugs else None,
-            custom_colors=custom_colors if custom_colors else None
+            token_slugs=token_slugs if token_slugs else None
         )
 
 
@@ -744,6 +817,67 @@ STYLE_VAR_MAPPING = {
     "Text/placeholder":           ("input", "placeholder"),
     "Background/input":           ("input", "background"),
     "Text/error":                 ("error",),
+}
+
+# Mapping entre les noms de variables Figma (Styles.json) et les clés plates
+# de custom.color dans theme.json (ex: "Text/title" -> "title").
+# Utilisé pour générer custom.color avec des références var:preset|color|...
+CUSTOM_COLOR_MAPPING = {
+    "Background/page":            "background",
+    "Text/body":                  "text",
+    "Text/title":                 "title",
+    "Text/link":                  "link",
+    "Text/hover":                 "link-hover",
+    "Text/accent":                "accent",
+    "Background/button":          "button-background",
+    "Text/button":                "button-text",
+    "Border/button":              "button-border",
+    "Background/button-hover":    "button-background-hover",
+    "Text/button-hover":          "button-text-hover",
+    "Border/button-hover":        "button-border-hover",
+    "Border/decorative":          "decorative",
+    "Text/placeholder":           "input-placeholder",
+    "Background/input":           "input-background",
+    "Text/error":                 "error",
+}
+
+# Variables globales de custom.color : le contrat sémantique du thème.
+# Ce sont uniquement des RÉFÉRENCES (var:preset|color|... / var:custom|color|...),
+# jamais des valeurs hex, pour que changer la palette suffise à retoner le thème.
+GLOBAL_COLOR_VARS = {
+    "text":                             "var:preset|color|neutral-dark",
+    "background":                       "var:preset|color|primary-light",
+    "title":                            "var:preset|color|primary-dark",
+    "link":                             "var:preset|color|primary-dark",
+    "link-hover":                       "var:preset|color|secondary-dark",
+    "accent":                           "var:preset|color|secondary-default",
+    "decorative":                       "var:preset|color|secondary-dark",
+    "error":                            "var:preset|color|semantic-error",
+    "input-text":                       "inherit",
+    "input-placeholder":                "var:preset|color|neutral-subtle",
+    "input-background":                 "var:preset|color|neutral-light",
+    "input-border":                     "currentColor",
+    "input-focus-border":               "var:preset|color|primary-default",
+    "button-text":                      "var:preset|color|primary-light",
+    "button-link":                      "var:preset|color|primary-dark",
+    "button-background":                "var:preset|color|secondary-dark",
+    "button-border":                    "var:preset|color|secondary-dark",
+    "button-text-hover":                "var:custom|color|button-link",
+    "button-background-hover":          "var:preset|color|primary-default",
+    "button-border-hover":              "var:preset|color|primary-dark",
+    "button-outline-text":              "var:custom|color|button-text",
+    "button-outline-link":              "var:custom|color|button-link",
+    "button-outline-background":        "var:custom|color|button-background",
+    "button-outline-border":            "var:preset|color|primary-default",
+    "button-outline-text-hover":        "var:custom|color|button-link",
+    "button-outline-background-hover":  "var:custom|color|button-background-hover",
+    "button-outline-border-hover":      "var:preset|color|primary-default",
+    "submit-text":                      "var:custom|color|button-text",
+    "submit-background":                "var:custom|color|button-background",
+    "submit-border":                    "var:custom|color|button-border",
+    "submit-text-hover":                "var:custom|color|button-link",
+    "submit-background-hover":          "var:custom|color|button-background-hover",
+    "submit-border-hover":              "var:custom|color|button-border-hover",
 }
 
 
@@ -803,7 +937,12 @@ def extract_style_from_mode(data, mode_id, token_slugs=None):
 def build_style_json(style_id):
     """Génère le contenu d'un fichier styleN.json pour styles/sections/.
     style_id peut être un entier (1, 2, ...) ou une chaîne ('default')."""
-    slug = f"style{style_id}" if isinstance(style_id, int) else f"style-{style_id}"
+    if isinstance(style_id, int):
+        slug = f"style{style_id}"
+    elif style_id == "default":
+        slug = "default"
+    else:
+        slug = f"style-{style_id}"
     prefix = f"var:custom|style|{style_id}"
     return {
         "$schema": "https://schemas.wp.org/trunk/theme.json",
@@ -831,6 +970,15 @@ def build_style_json(style_id):
                         "color": f"{prefix}|button|border-color",
                         "width": "1px",
                         "radius": "40"
+                    },
+                    ":hover": {
+                        "color": {
+                            "background": f"{prefix}|button|hover-background",
+                            "text": f"{prefix}|button|hover-text"
+                        },
+                        "border": {
+                            "color": f"{prefix}|button|hover-border"
+                        }
                     }
                 }
             },
@@ -873,63 +1021,51 @@ def extract_default_style_from_theme(theme_path):
     """
     Extrait les valeurs de style par défaut depuis theme.json
     pour créer l'entrée custom.style.default.
+    Si custom.style.default existe déjà dans theme.json, le conserve tel quel
+    (préserve les références var:custom|color|...).
+    Sinon, le construit en référençant les variables globales de custom.color,
+    ce qui garantit qu'aucune référence ne pointe dans le vide.
     """
     with open(theme_path, "r", encoding="utf-8") as f:
         theme = json.load(f)
 
-    styles = theme.get("styles", {})
     settings = theme.get("settings", {})
     custom = settings.get("custom", {})
 
-    default_style = {}
+    # Si custom.style.default existe déjà, le conserver intact
+    existing_default = custom.get("style", {}).get("default")
+    if existing_default:
+        return existing_default
 
-    # background et text
-    color = styles.get("color", {})
-    default_style["background"] = color.get("background", "var:custom|color|background")
-    default_style["text"] = color.get("text", "var:custom|color|text")
-
-    # heading (pas de couleur explicite dans le thème de base -> hérite de text)
-    default_style["heading"] = {
-        "text": styles.get("elements", {}).get("heading", {}).get("color", {}).get("text", default_style["text"])
+    # Sinon : mapper la structure custom.style.default sur les variables globales
+    default_style = {
+        "background": "var:custom|color|background",
+        "text": "var:custom|color|text",
+        "heading": {
+            "text": "var:custom|color|title"
+        },
+        "link": {
+            "text": "var:custom|color|link",
+            "hover-text": "var:custom|color|link-hover"
+        },
+        "button": {
+            "background": "var:custom|color|button-background",
+            "hover-background": "var:custom|color|button-background-hover",
+            "text": "var:custom|color|button-text",
+            "hover-text": "var:custom|color|button-text-hover",
+            "border-color": "var:custom|color|button-border",
+            "hover-border": "var:custom|color|button-border-hover"
+        },
+        "accent": "var:custom|color|accent",
+        "decorative": {
+            "border-color": "var:custom|color|decorative"
+        },
+        "input": {
+            "placeholder": "var:custom|color|input-placeholder",
+            "background": "var:custom|color|input-background"
+        },
+        "error": "var:custom|color|error"
     }
-
-    # link (pas de couleur explicite -> hérite de text)
-    link_el = styles.get("elements", {}).get("link", {})
-    default_style["link"] = {
-        "text": link_el.get("color", {}).get("text", default_style["text"]),
-        "hover-text": link_el.get(":hover", {}).get("color", {}).get("text", "var:preset|color|primary-default")
-    }
-
-    # button
-    btn_block = styles.get("blocks", {}).get("core/button", {})
-    btn_color = btn_block.get("color", {})
-    btn_border = btn_block.get("border", {})
-    default_style["button"] = {
-        "background": btn_color.get("background", "var:preset|color|accent"),
-        "hover-background": btn_color.get(":hover", {}).get("background", "var:preset|color|accent-2"),
-        "text": btn_color.get("text", "var:custom|color|text"),
-        "hover-text": btn_color.get(":hover", {}).get("text", "var:custom|color|text"),
-        "border-color": btn_border.get("color", "var:preset|color|accent"),
-        "hover-border": btn_border.get(":hover", {}).get("color", "var:preset|color|accent-2")
-    }
-
-    # accent
-    default_style["accent"] = "var:preset|color|accent"
-
-    # decorative
-    default_style["decorative"] = {
-        "border-color": "var:preset|color|accent"
-    }
-
-    # input
-    input_custom = custom.get("input", {})
-    default_style["input"] = {
-        "placeholder": input_custom.get("color-placeholder", "var:preset|color|neutral-subtle"),
-        "background": input_custom.get("color-background", "var:preset|color|neutral-light")
-    }
-
-    # error
-    default_style["error"] = "var:preset|color|semantic-error"
 
     return default_style
 
@@ -990,10 +1126,15 @@ def build_token_slugs(token_data, mode_id=None):
     return slugs
 
 
-def extract_custom_colors_from_file(data, selected_mode_ids):
+def extract_custom_colors_from_file(data, selected_mode_ids, token_slugs=None):
     """
     Extrait les couleurs d'un fichier Figma pour les placer dans custom.color.
-    Retourne un dict {slug: hex}.
+    Retourne un dict {slug: value}.
+    Si token_slugs est fourni (dict {alias_name: slug}), génère des références
+    var:preset|color|<slug> au lieu de valeurs hex.
+    Les variables de style (dans CUSTOM_COLOR_MAPPING) sont IGNORÉES : elles
+    vont dans custom.style.N, pas custom.color. Les entrées custom.color de style
+    (title, link, button-*, etc.) sont préservées depuis theme.json.
     Si plusieurs modes sont sélectionnés, le nom du mode est ajouté au slug.
     """
     modes = data.get("modes", {})
@@ -1003,21 +1144,47 @@ def extract_custom_colors_from_file(data, selected_mode_ids):
     for var in data.get("variables", []):
         if var.get("type") != "COLOR":
             continue
+        name = var.get("name", "")
+        # Ignorer les variables de style : elles vont dans custom.style.N,
+        # pas dans custom.color (préserve les valeurs curées du thème)
+        if name in CUSTOM_COLOR_MAPPING:
+            continue
+        # Calculer le slug à l'avance pour vérifier les collisions
+        if multi_mode:
+            # On ne peut pas savoir le mode à l'avance, mais on vérifie le slug de base
+            base_slug = slugify(name)
+        else:
+            base_slug = slugify(name)
+        # Ignorer si le slug entre en collision avec une clé custom.color curée
+        # (ex: "Error" -> "error" qui est aussi une clé de style)
+        if base_slug in CUSTOM_COLOR_MAPPING.values():
+            continue
         for mode_id in selected_mode_ids:
             rv = var.get("resolvedValuesByMode", {}).get(mode_id)
             if not rv:
                 continue
-            val = rv.get("resolvedValue")
-            if not val or not isinstance(val, dict) or "r" not in val:
-                continue
-            hexcode = figma_rgba_to_hex(val)
-            name = var["name"]
+
+            # Pour les autres variables (Colors.json, etc.)
+            if token_slugs:
+                alias_name = rv.get("aliasName", "")
+                if alias_name and alias_name in token_slugs:
+                    value = f"var:preset|color|{token_slugs[alias_name]}"
+                else:
+                    val = rv.get("resolvedValue")
+                    if not val or not isinstance(val, dict) or "r" not in val:
+                        continue
+                    value = figma_rgba_to_hex(val)
+            else:
+                val = rv.get("resolvedValue")
+                if not val or not isinstance(val, dict) or "r" not in val:
+                    continue
+                value = figma_rgba_to_hex(val)
             if multi_mode:
                 mode_name = modes.get(mode_id, mode_id)
                 slug = slugify(f"{name} {mode_name}")
             else:
                 slug = slugify(name)
-            result[slug] = hexcode
+            result[slug] = value
     return result
 
 
