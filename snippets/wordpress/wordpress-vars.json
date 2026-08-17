@@ -1,0 +1,74 @@
+{
+    "// CSS/SCSS — Preset Color": {
+        "scope": "scss,css",
+        "prefix": "varc(",
+        "body": "var(--wp--preset--color--${1:primary-default})",
+        "description": "var() preset color (CSS/SCSS)"
+    },
+    "// CSS/SCSS — Preset Spacing": {
+        "scope": "scss,css",
+        "prefix": "vars(",
+        "body": "var(--wp--preset--spacing--${1:16})",
+        "description": "var() preset spacing (CSS/SCSS)"
+    },
+    "// CSS/SCSS — Preset Font Size": {
+        "scope": "scss,css",
+        "prefix": "varf(",
+        "body": "var(--wp--preset--font-size--${1:body-default})",
+        "description": "var() preset font-size (CSS/SCSS)"
+    },
+    "// CSS/SCSS — Preset Font Family": {
+        "scope": "scss,css",
+        "prefix": "varff(",
+        "body": "var(--wp--preset--font-family--${1:primary})",
+        "description": "var() preset font-family (CSS/SCSS)"
+    },
+    "// CSS/SCSS — Custom Color": {
+        "scope": "scss,css",
+        "prefix": "varcc(",
+        "body": "var(--wp--custom--color--${1:button-text})",
+        "description": "var() custom color (CSS/SCSS)"
+    },
+    "// CSS/SCSS — Custom Navigation": {
+        "scope": "scss,css",
+        "prefix": "varcn(",
+        "body": "var(--wp--custom--navigation--${1:principal}--${2:text})",
+        "description": "var() custom navigation (CSS/SCSS)"
+    },
+    "// JSON — Preset Color": {
+        "scope": "json",
+        "prefix": "varc:",
+        "body": "var:preset|color|${1:primary-default}",
+        "description": "var:preset preset color (JSON)"
+    },
+    "// JSON — Preset Spacing": {
+        "scope": "json",
+        "prefix": "vars:",
+        "body": "var:preset|spacing|${1:16}",
+        "description": "var:preset preset spacing (JSON)"
+    },
+    "// JSON — Preset Font Size": {
+        "scope": "json",
+        "prefix": "varf:",
+        "body": "var:preset|font-size|${1:body-default}",
+        "description": "var:preset preset font-size (JSON)"
+    },
+    "// JSON — Preset Font Family": {
+        "scope": "json",
+        "prefix": "varff:",
+        "body": "var:preset|font-family|${1:primary}",
+        "description": "var:preset preset font-family (JSON)"
+    },
+    "// JSON — Custom Color": {
+        "scope": "json",
+        "prefix": "varcc:",
+        "body": "var:custom|color|${1:button-text}",
+        "description": "var:custom custom color (JSON)"
+    },
+    "// JSON — Custom Navigation": {
+        "scope": "json",
+        "prefix": "varcn:",
+        "body": "var:custom|navigation|${1:principal}|${2:text}",
+        "description": "var:custom custom navigation (JSON)"
+    }
+}
