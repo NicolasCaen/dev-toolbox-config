@@ -1,0 +1,32 @@
+{
+    "// SCSS — Mixin between (min/max)": {
+        "scope": "scss",
+        "prefix": "@b(",
+        "body": [
+            "@include b(${1:768}, ${2:1024}) {",
+            "    ${3:/* ... */}",
+            "}"
+        ],
+        "description": "Mixin b() — media query between min and max width"
+    },
+    "// SCSS — Mixin max (mobile-first)": {
+        "scope": "scss",
+        "prefix": "@m(",
+        "body": [
+            "@include m(${1:768}) {",
+            "    ${2:/* ... */}",
+            "}"
+        ],
+        "description": "Mixin m() — media query max-width"
+    },
+    "// SCSS — Mixin min (desktop-first)": {
+        "scope": "scss",
+        "prefix": "@p(",
+        "body": [
+            "@include p(${1:768}) {",
+            "    ${2:/* ... */}",
+            "}"
+        ],
+        "description": "Mixin p() — media query min-width"
+    }
+}
