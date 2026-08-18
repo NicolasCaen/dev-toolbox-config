@@ -1,0 +1,14 @@
+{
+    "// WordPress — Style wrap section": {
+        "scope": "php,html",
+        "prefix": "wp-style-wrap",
+        "body": [
+            "<!-- wp:group {\"metadata\":{\"name\":\"Section | Styles (${1:1})\"},\"align\":\"full\",\"className\":\"is-style-style${1:1} section-styles\",\"layout\":{\"type\":\"constrained\"}} -->",
+            "<div class=\"wp-block-group alignfull is-style-style${1:1} section-styles\">",
+            "$TM_SELECTED_TEXT",
+            "</div>",
+            "<!-- /wp:group -->"
+        ],
+        "description": "Wrapper un pattern dans un group avec style de section"
+    }
+}
