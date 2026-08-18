@@ -1,0 +1,8 @@
+{
+    "// WordPress — Pattern reference": {
+        "scope": "php,html",
+        "prefix": "/pattern",
+        "body": "<!-- wp:pattern {\"slug\":\"${1:ng1-base}/${2:section-chambres}\"} /-->",
+        "description": "Insère une référence de pattern WordPress"
+    }
+}
